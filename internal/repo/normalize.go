@@ -14,6 +14,12 @@ const squadMarker = "/.claude-squad/worktrees/"
 // worktree path by taking everything after ".claude-squad/worktrees/" and
 // stripping the trailing _<hash> suffix. Returns "" for any path that is not
 // a Claude Squad worktree. The branch may contain slashes (e.g. "fix/x").
+//
+// Not currently wired into Resolver: dead worktrees are resolved by an exact
+// cwd match against the squad-state index (see resolve.go), which is precise
+// and sufficient for observed data. This branch-name fallback is retained for
+// a future lower-confidence match when a worktree cwd is absent from the
+// squad index but still follows the naming convention.
 func NormalizeWorktreeBranch(path string) string {
 	i := strings.Index(path, squadMarker)
 	if i < 0 {
