@@ -22,6 +22,8 @@ type CCUsage interface {
 type Config struct {
 	StoreRoot      string  // snapshot store root (contains projects/)
 	SquadStatePath string  // path to claude-squad state.json
+	RepoMapPath    string  // path to the durable cwd -> repo index
+	ConfigPath     string  // path to the tool config.json
 	OutDir         string  // directory to write the four output files
 	CCUsage        CCUsage // ccusage implementation
 }
@@ -35,12 +37,26 @@ type Result struct {
 // Run resolves repos for every project dir in the store, calls ccusage,
 // joins the two, writes the four output files, and returns the rows.
 func Run(cfg Config) (*Result, error) {
-	// 1. Build a project-dir -> resolved-repo map.
+	// 1. Build a project-dir -> resolved-repo map. The resolver draws on the
+	//    durable repo-map index, the volatile claude-squad state, and an
+	//    optional Squad-default fallback from config.
 	squadIdx, err := repo.LoadSquadState(cfg.SquadStatePath)
 	if err != nil {
 		return nil, err
 	}
-	resolver := repo.NewResolver(squadIdx)
+	repoMap, err := repo.LoadRepoMap(cfg.RepoMapPath)
+	if err != nil {
+		return nil, err
+	}
+	toolCfg, err := repo.LoadConfig(cfg.ConfigPath)
+	if err != nil {
+		return nil, err
+	}
+	resolver := repo.NewResolver(repo.ResolverSources{
+		RepoMap:          repoMap,
+		SquadState:       squadIdx,
+		SquadDefaultRepo: toolCfg.SquadDefaultRepo,
+	})
 	repoByProject := resolveAllProjects(filepath.Join(cfg.StoreRoot, "projects"), resolver)
 
 	// 2. Run ccusage.

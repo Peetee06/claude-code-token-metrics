@@ -34,7 +34,7 @@ func TestResolveLiveGitRepo(t *testing.T) {
 	runGit(t, dir, "config", "user.name", "t")
 
 	transcript := writeTranscript(t, dir, dir)
-	resolver := NewResolver(map[string]string{})
+	resolver := NewResolver(ResolverSources{})
 	got := resolver.Resolve("project-dir-name", transcript)
 
 	// git rev-parse may resolve symlinks (e.g. /var -> /private/var on macOS);
@@ -47,18 +47,73 @@ func TestResolveLiveGitRepo(t *testing.T) {
 }
 
 func TestResolveDeadWorktreeViaSquadState(t *testing.T) {
-	idx := map[string]string{
-		"/Users/me/.claude-squad/worktrees/fix/archived-inspections_18afafe44922d0d0": "/Users/me/dev/Iakuvo",
-	}
-	resolver := NewResolver(idx)
+	resolver := NewResolver(ResolverSources{
+		SquadState: map[string]string{
+			"/Users/me/.claude-squad/worktrees/fix/archived-inspections_18afafe44922d0d0": "/Users/me/dev/Iakuvo",
+		},
+	})
 	got := resolver.Resolve("project-dir", "testdata/transcript-dead-worktree.jsonl")
 	if got != "/Users/me/dev/Iakuvo" {
 		t.Errorf("Resolve dead worktree = %q, want /Users/me/dev/Iakuvo", got)
 	}
 }
 
+// The scenario the durable repo-map fixes: the worktree is deleted AND the
+// instance is gone from claude-squad state.json, but the SessionStart hook
+// recorded the cwd -> repo mapping while the instance was alive.
+func TestResolveDeadWorktreeViaRepoMap(t *testing.T) {
+	cwd := "/Users/me/.claude-squad/worktrees/fix/archived-inspections_18afafe44922d0d0"
+	resolver := NewResolver(ResolverSources{
+		RepoMap:    map[string]string{cwd: "/Users/me/dev/Iakuvo"},
+		SquadState: map[string]string{}, // instance already deleted from state
+	})
+	got := resolver.Resolve("project-dir", "testdata/transcript-dead-worktree.jsonl")
+	if got != "/Users/me/dev/Iakuvo" {
+		t.Errorf("Resolve via repo-map = %q, want /Users/me/dev/Iakuvo", got)
+	}
+}
+
+// repo-map takes precedence over the volatile squad state when both have an
+// entry for the same cwd.
+func TestResolveRepoMapBeatsSquadState(t *testing.T) {
+	cwd := "/Users/me/.claude-squad/worktrees/fix/archived-inspections_18afafe44922d0d0"
+	resolver := NewResolver(ResolverSources{
+		RepoMap:    map[string]string{cwd: "/Users/me/dev/correct"},
+		SquadState: map[string]string{cwd: "/Users/me/dev/stale"},
+	})
+	got := resolver.Resolve("project-dir", "testdata/transcript-dead-worktree.jsonl")
+	if got != "/Users/me/dev/correct" {
+		t.Errorf("Resolve = %q, want repo-map value /Users/me/dev/correct", got)
+	}
+}
+
+// Historical Squad sessions: worktree gone, no repo-map entry, no squad-state
+// entry — the blanket SquadDefaultRepo fallback attributes them.
+func TestResolveSquadDefaultFallback(t *testing.T) {
+	resolver := NewResolver(ResolverSources{
+		SquadDefaultRepo: "/Users/me/dev/Iakuvo",
+	})
+	got := resolver.Resolve("project-dir", "testdata/transcript-dead-worktree.jsonl")
+	if got != "/Users/me/dev/Iakuvo" {
+		t.Errorf("Resolve via squad default = %q, want /Users/me/dev/Iakuvo", got)
+	}
+}
+
+// The squad-default fallback must NOT swallow a non-Squad unresolvable cwd.
+func TestResolveSquadDefaultIgnoresNonSquadCwd(t *testing.T) {
+	dir := t.TempDir()
+	transcript := writeTranscript(t, dir, "/Users/me/dev/some-deleted-plain-dir")
+	resolver := NewResolver(ResolverSources{
+		SquadDefaultRepo: "/Users/me/dev/Iakuvo",
+	})
+	got := resolver.Resolve("project-dir", transcript)
+	if got != "unknown" {
+		t.Errorf("Resolve non-Squad dead cwd = %q, want unknown", got)
+	}
+}
+
 func TestResolveUnknown(t *testing.T) {
-	resolver := NewResolver(map[string]string{})
+	resolver := NewResolver(ResolverSources{})
 	got := resolver.Resolve("project-dir", "testdata/transcript-nocwd.jsonl")
 	if got != "unknown" {
 		t.Errorf("Resolve with no cwd = %q, want unknown", got)
@@ -84,7 +139,7 @@ func TestResolveLiveGitWorktreeFoldsToOriginRepo(t *testing.T) {
 	// A transcript whose cwd is the linked worktree must resolve to the
 	// MAIN repo root, not the worktree path.
 	transcript := writeTranscript(t, t.TempDir(), worktree)
-	resolver := NewResolver(map[string]string{})
+	resolver := NewResolver(ResolverSources{})
 	got := resolver.Resolve("project-dir", transcript)
 
 	wantMain, _ := filepath.EvalSymlinks(mainRepo)

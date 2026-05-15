@@ -27,10 +27,27 @@ func ClaudeSettingsFile() string {
 	return filepath.Join(HomeDir(), ".claude", "settings.json")
 }
 
+// ToolDir is the tool's root data directory. It holds the snapshot store, the
+// repo-map index, and the config file.
+func ToolDir() string {
+	return filepath.Join(HomeDir(), ".claude-token-metrics")
+}
+
 // StoreRoot is the snapshot store root. ccusage is invoked with
 // CLAUDE_CONFIG_DIR set to this path, so it must contain a projects/ subdir.
 func StoreRoot() string {
-	return filepath.Join(HomeDir(), ".claude-token-metrics", "snapshots")
+	return filepath.Join(ToolDir(), "snapshots")
+}
+
+// RepoMapFile is the durable cwd -> origin-repo index written by the
+// SessionStart hook and refreshed by sweep.
+func RepoMapFile() string {
+	return filepath.Join(ToolDir(), "repo-map.json")
+}
+
+// ConfigFile is the optional tool config (e.g. squad_default_repo).
+func ConfigFile() string {
+	return filepath.Join(ToolDir(), "config.json")
 }
 
 // StoreProjectsDir is the projects/ subdirectory ccusage expects.

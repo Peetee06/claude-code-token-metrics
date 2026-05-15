@@ -77,6 +77,53 @@ func TestMergeSessionEndHookCreatesMissingFile(t *testing.T) {
 	}
 }
 
+// MergeHook must support arbitrary events and let SessionStart + SessionEnd
+// coexist without one clobbering the other or the user's existing hooks.
+func TestMergeHookSessionStartAndEndCoexist(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "settings.json")
+	src, _ := os.ReadFile("testdata/settings-with-hooks.json")
+	if err := os.WriteFile(settings, src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := MergeHook(settings, "SessionEnd", "/abs/snapshot-transcript.sh"); err != nil {
+		t.Fatal(err)
+	}
+	if err := MergeHook(settings, "SessionStart", "/abs/record-repo.sh"); err != nil {
+		t.Fatal(err)
+	}
+
+	hooks := loadHooks(t, settings)
+	if _, ok := hooks["PreToolUse"]; !ok {
+		t.Error("PreToolUse hook was clobbered")
+	}
+	se, ok := hooks["SessionEnd"].([]any)
+	if !ok || len(se) != 1 {
+		t.Errorf("SessionEnd = %v, want one entry", hooks["SessionEnd"])
+	}
+	ss, ok := hooks["SessionStart"].([]any)
+	if !ok || len(ss) != 1 {
+		t.Errorf("SessionStart = %v, want one entry", hooks["SessionStart"])
+	}
+}
+
+func TestMergeHookIsIdempotentPerEvent(t *testing.T) {
+	dir := t.TempDir()
+	settings := filepath.Join(dir, "settings.json")
+	script := "/abs/record-repo.sh"
+	for i := 0; i < 3; i++ {
+		if err := MergeHook(settings, "SessionStart", script); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hooks := loadHooks(t, settings)
+	ss := hooks["SessionStart"].([]any)
+	if len(ss) != 1 {
+		t.Errorf("SessionStart has %d entries after three merges, want 1", len(ss))
+	}
+}
+
 func TestInstallHookScript(t *testing.T) {
 	srcDir := t.TempDir()
 	src := filepath.Join(srcDir, "snapshot-transcript.sh")

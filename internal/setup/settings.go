@@ -10,11 +10,18 @@ import (
 )
 
 // MergeSessionEndHook adds a SessionEnd hook running scriptPath into the
-// Claude Code settings file at settingsPath. It preserves every other key and
-// every other hook event, and is idempotent: a SessionEnd entry already
-// pointing at scriptPath is not duplicated. A missing settings file is
-// created with just the hooks object.
+// Claude Code settings file. It is a thin wrapper over MergeHook, kept for
+// callers and tests that target the SessionEnd event specifically.
 func MergeSessionEndHook(settingsPath, scriptPath string) error {
+	return MergeHook(settingsPath, "SessionEnd", scriptPath)
+}
+
+// MergeHook adds a hook running scriptPath under the given event (e.g.
+// "SessionStart", "SessionEnd") into the Claude Code settings file at
+// settingsPath. It preserves every other key and every other hook event, and
+// is idempotent: a hook for that event already pointing at scriptPath is not
+// duplicated. A missing settings file is created with just the hooks object.
+func MergeHook(settingsPath, event, scriptPath string) error {
 	settings := map[string]any{}
 
 	data, err := os.ReadFile(settingsPath)
@@ -36,11 +43,12 @@ func MergeSessionEndHook(settingsPath, scriptPath string) error {
 		hooks = map[string]any{}
 	}
 
-	// SessionEnd is an array of matcher-groups; each group has a hooks array.
-	sessionEnd, _ := hooks["SessionEnd"].([]any)
+	// Each event maps to an array of matcher-groups; each group has a hooks
+	// array.
+	groups, _ := hooks[event].([]any)
 
-	// Idempotency: bail if any entry already runs our script.
-	if sessionEndContainsScript(sessionEnd, scriptPath) {
+	// Idempotency: bail if any group already runs our script.
+	if hookContainsScript(groups, scriptPath) {
 		return nil
 	}
 
@@ -49,16 +57,16 @@ func MergeSessionEndHook(settingsPath, scriptPath string) error {
 			map[string]any{"type": "command", "command": scriptPath},
 		},
 	}
-	hooks["SessionEnd"] = append(sessionEnd, newGroup)
+	hooks[event] = append(groups, newGroup)
 	settings["hooks"] = hooks
 
 	return writeSettings(settingsPath, settings)
 }
 
-// sessionEndContainsScript reports whether any SessionEnd group already runs
+// hookContainsScript reports whether any matcher-group already runs
 // command == scriptPath.
-func sessionEndContainsScript(sessionEnd []any, scriptPath string) bool {
-	for _, g := range sessionEnd {
+func hookContainsScript(groups []any, scriptPath string) bool {
+	for _, g := range groups {
 		group, ok := g.(map[string]any)
 		if !ok {
 			continue
@@ -108,27 +116,43 @@ func InstallHookScript(src, dest string) error {
 
 // Config holds the inputs for a setup run.
 type Config struct {
-	SettingsPath   string // ~/.claude/settings.json
-	HookScriptSrc  string // hooks/snapshot-transcript.sh in the repo
-	HookScriptDest string // ~/.claude-token-metrics/hooks/snapshot-transcript.sh
-	HomeDir        string // for the launchd agents dir
-	BinPath        string // absolute path to the installed binary
+	SettingsPath string // ~/.claude/settings.json
+
+	// SessionEnd hook: snapshots the final transcript.
+	SessionEndScriptSrc  string
+	SessionEndScriptDest string
+
+	// SessionStart hook: records the cwd -> origin-repo mapping while the
+	// worktree is still alive.
+	SessionStartScriptSrc  string
+	SessionStartScriptDest string
+
+	HomeDir string // for the launchd agents dir
+	BinPath string // absolute path to the installed binary
 }
 
-// Run installs the hook script, merges the SessionEnd hook, and installs the
-// launchd sweep job. It returns a human-readable summary.
+// Run installs both hook scripts, merges the SessionEnd and SessionStart hooks
+// into the Claude Code settings, and installs the launchd sweep job. It
+// returns a human-readable summary.
 func Run(cfg Config) (string, error) {
-	if err := InstallHookScript(cfg.HookScriptSrc, cfg.HookScriptDest); err != nil {
+	if err := InstallHookScript(cfg.SessionEndScriptSrc, cfg.SessionEndScriptDest); err != nil {
 		return "", err
 	}
-	if err := MergeSessionEndHook(cfg.SettingsPath, cfg.HookScriptDest); err != nil {
+	if err := InstallHookScript(cfg.SessionStartScriptSrc, cfg.SessionStartScriptDest); err != nil {
+		return "", err
+	}
+	if err := MergeHook(cfg.SettingsPath, "SessionEnd", cfg.SessionEndScriptDest); err != nil {
+		return "", err
+	}
+	if err := MergeHook(cfg.SettingsPath, "SessionStart", cfg.SessionStartScriptDest); err != nil {
 		return "", err
 	}
 	plistPath, err := InstallSweepJob(cfg.HomeDir, cfg.BinPath)
 	summary := "setup complete:\n" +
-		"  hook script: " + cfg.HookScriptDest + "\n" +
-		"  SessionEnd hook merged into: " + cfg.SettingsPath + "\n" +
-		"  launchd job: " + plistPath
+		"  SessionEnd hook:   " + cfg.SessionEndScriptDest + "\n" +
+		"  SessionStart hook: " + cfg.SessionStartScriptDest + "\n" +
+		"  hooks merged into: " + cfg.SettingsPath + "\n" +
+		"  launchd job:       " + plistPath
 	if err != nil {
 		// launchctl load failed but everything is on disk.
 		return summary, err

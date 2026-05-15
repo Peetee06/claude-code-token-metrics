@@ -23,18 +23,45 @@ go build -o claude-code-token-metrics .
 ```
 
 `setup`:
-- copies the SessionEnd hook script into `~/.claude-token-metrics/hooks/`
-- merges a `SessionEnd` hook into `~/.claude/settings.json` (existing hooks
-  are preserved; re-running is idempotent)
+- copies the `SessionStart` and `SessionEnd` hook scripts into
+  `~/.claude-token-metrics/hooks/`
+- merges both hooks into `~/.claude/settings.json` (existing hooks are
+  preserved; re-running is idempotent)
 - installs a launchd job that runs `sweep` every 4 hours
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `setup` | Install the hook and the launchd sweep job. |
-| `sweep` | One-shot rsync of `~/.claude/projects` into the snapshot store. |
+| `setup` | Install the hooks and the launchd sweep job. |
+| `sweep` | One-shot rsync of `~/.claude/projects` into the snapshot store, plus a refresh of the repo-map index. |
 | `analyze [--out <dir>]` | Resolve repos, run ccusage, write CSV/JSON (default `out/`). |
+
+## Repo resolution
+
+Attributing a transcript to its git repo is hard once a Claude Squad worktree
+is deleted: the worktree directory is gone and Squad also removes the instance
+from its `state.json`. To survive this, a **`SessionStart` hook records each
+session's `cwd` → origin-repo mapping while the worktree is still alive**, into
+a durable `~/.claude-token-metrics/repo-map.json`. `sweep` also refreshes that
+index from the live `state.json`.
+
+`analyze` resolves each transcript in this order: live `git` lookup → the
+durable repo-map → the live `state.json` → an optional Squad-default fallback →
+`unknown`.
+
+### Optional config
+
+`~/.claude-token-metrics/config.json` is optional:
+
+```json
+{ "squad_default_repo": "/path/to/your/repo" }
+```
+
+When set, any Claude Squad worktree session that nothing else resolves is
+attributed to `squad_default_repo`. This recovers historical sessions whose
+worktrees were deleted before the `SessionStart` hook was installed — useful if
+you only ever ran Claude Squad against a single repo.
 
 ## Output
 
@@ -51,4 +78,4 @@ bucketed under `unknown` — never dropped.
 
 The snapshot store (`~/.claude-token-metrics/snapshots/`) contains your
 prompts and source code. It is local-only and gitignored. **Only code, the
-hook script, and `setup` belong in this repo — never snapshots.**
+hook scripts, and `setup` belong in this repo — never snapshots.**

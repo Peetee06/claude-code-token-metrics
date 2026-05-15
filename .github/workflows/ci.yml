@@ -14,5 +14,7 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./...
-      - name: hook script test
-        run: bash hooks/snapshot-transcript_test.sh
+      - name: hook script tests
+        run: |
+          bash hooks/snapshot-transcript_test.sh
+          bash hooks/record-repo_test.sh

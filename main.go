@@ -9,6 +9,7 @@ import (
 	"github.com/petertrost/claude-code-token-metrics/internal/analyze"
 	"github.com/petertrost/claude-code-token-metrics/internal/ccusage"
 	"github.com/petertrost/claude-code-token-metrics/internal/paths"
+	"github.com/petertrost/claude-code-token-metrics/internal/repo"
 	"github.com/petertrost/claude-code-token-metrics/internal/setup"
 	"github.com/petertrost/claude-code-token-metrics/internal/snapshot"
 )
@@ -16,13 +17,25 @@ import (
 const usage = `claude-code-token-metrics — durable Claude Code token-usage capture & analysis
 
 Usage:
-  claude-code-token-metrics setup     Install the SessionEnd hook and launchd sweep job
+  claude-code-token-metrics setup     Install the SessionStart/SessionEnd hooks and launchd sweep job
   claude-code-token-metrics sweep     Snapshot ~/.claude/projects into the local store
   claude-code-token-metrics analyze   Resolve repos, run ccusage, write CSV/JSON
 `
 
 func runSweep() error {
-	return snapshot.Sweep(paths.ClaudeProjectsDir(), paths.StoreProjectsDir())
+	if err := snapshot.Sweep(paths.ClaudeProjectsDir(), paths.StoreProjectsDir()); err != nil {
+		return err
+	}
+	// Capture any worktree -> repo pairs that are live right now into the
+	// durable index, so they survive the instance being killed later.
+	added, err := repo.MergeSquadStateIntoRepoMap(paths.SquadStateFile(), paths.RepoMapFile())
+	if err != nil {
+		return err
+	}
+	if added > 0 {
+		fmt.Printf("sweep: recorded %d new worktree->repo mapping(s)\n", added)
+	}
+	return nil
 }
 
 func runAnalyze(args []string) error {
@@ -34,6 +47,8 @@ func runAnalyze(args []string) error {
 	res, err := analyze.Run(analyze.Config{
 		StoreRoot:      paths.StoreRoot(),
 		SquadStatePath: paths.SquadStateFile(),
+		RepoMapPath:    paths.RepoMapFile(),
+		ConfigPath:     paths.ConfigFile(),
 		OutDir:         *outDir,
 		CCUsage:        ccusage.DefaultRunner(),
 	})
@@ -50,19 +65,22 @@ func runSetup() error {
 	if err != nil {
 		return err
 	}
-	// The hook script ships next to the repo; locate it relative to the binary
-	// at build time is not reliable, so require it via the CCTM_HOOK_SRC env
-	// var when running from source, else assume it sits beside the binary.
-	hookSrc := os.Getenv("CCTM_HOOK_SRC")
-	if hookSrc == "" {
-		hookSrc = filepath.Join(filepath.Dir(exe), "hooks", "snapshot-transcript.sh")
+	// The hook scripts ship in a hooks/ directory. Locating it relative to the
+	// binary is unreliable when running from source, so honor the CCTM_HOOK_DIR
+	// env var as an override; otherwise assume hooks/ sits beside the binary.
+	hookDir := os.Getenv("CCTM_HOOK_DIR")
+	if hookDir == "" {
+		hookDir = filepath.Join(filepath.Dir(exe), "hooks")
 	}
+	hooksDest := filepath.Join(paths.ToolDir(), "hooks")
 	summary, err := setup.Run(setup.Config{
-		SettingsPath:   paths.ClaudeSettingsFile(),
-		HookScriptSrc:  hookSrc,
-		HookScriptDest: filepath.Join(paths.HomeDir(), ".claude-token-metrics", "hooks", "snapshot-transcript.sh"),
-		HomeDir:        paths.HomeDir(),
-		BinPath:        exe,
+		SettingsPath:           paths.ClaudeSettingsFile(),
+		SessionEndScriptSrc:    filepath.Join(hookDir, "snapshot-transcript.sh"),
+		SessionEndScriptDest:   filepath.Join(hooksDest, "snapshot-transcript.sh"),
+		SessionStartScriptSrc:  filepath.Join(hookDir, "record-repo.sh"),
+		SessionStartScriptDest: filepath.Join(hooksDest, "record-repo.sh"),
+		HomeDir:                paths.HomeDir(),
+		BinPath:                exe,
 	})
 	if summary != "" {
 		fmt.Println(summary)
