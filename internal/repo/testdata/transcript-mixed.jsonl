@@ -1,0 +1,4 @@
+{"type":"ai-title","sessionId":"s1"}
+{"type":"system","sessionId":"s1"}
+{"type":"assistant","sessionId":"s1","cwd":"/Users/me/dev/Iakuvo","message":{"model":"claude-opus-4-7"}}
+{"type":"user","sessionId":"s1","cwd":"/Users/me/dev/Iakuvo"}
