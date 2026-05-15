@@ -1,0 +1,22 @@
+{
+  "instances": [
+    {
+      "title": "fix/archived-inspections",
+      "branch": "fix/archived-inspections",
+      "worktree": {
+        "repo_path": "/Users/me/dev/Iakuvo",
+        "worktree_path": "/Users/me/.claude-squad/worktrees/fix/archived-inspections_18afafe44922d0d0",
+        "branch_name": "fix/archived-inspections"
+      }
+    },
+    {
+      "title": "build-ast-tool",
+      "branch": "build-ast-tool",
+      "worktree": {
+        "repo_path": "/Users/me/dev/other-repo",
+        "worktree_path": "/Users/me/.claude-squad/worktrees/build-ast-tool_18af8b8b8eb18d58",
+        "branch_name": "build-ast-tool"
+      }
+    }
+  ]
+}
