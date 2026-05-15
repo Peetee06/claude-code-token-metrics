@@ -76,3 +76,24 @@ func TestMergeSessionEndHookCreatesMissingFile(t *testing.T) {
 		t.Error("SessionEnd not added to freshly created settings file")
 	}
 }
+
+func TestInstallHookScript(t *testing.T) {
+	srcDir := t.TempDir()
+	src := filepath.Join(srcDir, "snapshot-transcript.sh")
+	if err := os.WriteFile(src, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	destDir := t.TempDir()
+	dest := filepath.Join(destDir, "hooks", "snapshot-transcript.sh")
+
+	if err := InstallHookScript(src, dest); err != nil {
+		t.Fatalf("InstallHookScript: %v", err)
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		t.Fatalf("hook script not installed: %v", err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Error("installed hook script is not executable")
+	}
+}

@@ -92,3 +92,46 @@ func writeSettings(path string, settings map[string]any) error {
 	out = append(out, '\n')
 	return os.WriteFile(path, out, 0o644)
 }
+
+// InstallHookScript copies the hook script from src to dest, creating dest's
+// parent directory and marking the result executable.
+func InstallHookScript(src, dest string) error {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dest, data, 0o755)
+}
+
+// Config holds the inputs for a setup run.
+type Config struct {
+	SettingsPath   string // ~/.claude/settings.json
+	HookScriptSrc  string // hooks/snapshot-transcript.sh in the repo
+	HookScriptDest string // ~/.claude-token-metrics/hooks/snapshot-transcript.sh
+	HomeDir        string // for the launchd agents dir
+	BinPath        string // absolute path to the installed binary
+}
+
+// Run installs the hook script, merges the SessionEnd hook, and installs the
+// launchd sweep job. It returns a human-readable summary.
+func Run(cfg Config) (string, error) {
+	if err := InstallHookScript(cfg.HookScriptSrc, cfg.HookScriptDest); err != nil {
+		return "", err
+	}
+	if err := MergeSessionEndHook(cfg.SettingsPath, cfg.HookScriptDest); err != nil {
+		return "", err
+	}
+	plistPath, err := InstallSweepJob(cfg.HomeDir, cfg.BinPath)
+	summary := "setup complete:\n" +
+		"  hook script: " + cfg.HookScriptDest + "\n" +
+		"  SessionEnd hook merged into: " + cfg.SettingsPath + "\n" +
+		"  launchd job: " + plistPath
+	if err != nil {
+		// launchctl load failed but everything is on disk.
+		return summary, err
+	}
+	return summary, nil
+}

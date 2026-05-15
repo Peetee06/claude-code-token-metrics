@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/petertrost/claude-code-token-metrics/internal/analyze"
 	"github.com/petertrost/claude-code-token-metrics/internal/ccusage"
 	"github.com/petertrost/claude-code-token-metrics/internal/paths"
+	"github.com/petertrost/claude-code-token-metrics/internal/setup"
 	"github.com/petertrost/claude-code-token-metrics/internal/snapshot"
 )
 
@@ -43,6 +45,31 @@ func runAnalyze(args []string) error {
 	return nil
 }
 
+func runSetup() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	// The hook script ships next to the repo; locate it relative to the binary
+	// at build time is not reliable, so require it via the CCTM_HOOK_SRC env
+	// var when running from source, else assume it sits beside the binary.
+	hookSrc := os.Getenv("CCTM_HOOK_SRC")
+	if hookSrc == "" {
+		hookSrc = filepath.Join(filepath.Dir(exe), "hooks", "snapshot-transcript.sh")
+	}
+	summary, err := setup.Run(setup.Config{
+		SettingsPath:   paths.ClaudeSettingsFile(),
+		HookScriptSrc:  hookSrc,
+		HookScriptDest: filepath.Join(paths.HomeDir(), ".claude-token-metrics", "hooks", "snapshot-transcript.sh"),
+		HomeDir:        paths.HomeDir(),
+		BinPath:        exe,
+	})
+	if summary != "" {
+		fmt.Println(summary)
+	}
+	return err
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
@@ -50,7 +77,10 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "setup":
-		fmt.Println("setup: not yet implemented")
+		if err := runSetup(); err != nil {
+			fmt.Fprintln(os.Stderr, "setup:", err)
+			os.Exit(1)
+		}
 	case "sweep":
 		if err := runSweep(); err != nil {
 			fmt.Fprintln(os.Stderr, "sweep:", err)
