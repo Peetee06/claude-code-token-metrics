@@ -1,0 +1,35 @@
+{
+  "projects": {
+    "-Users-me-dev-Iakuvo": [
+      {
+        "date": "2026-05-15",
+        "inputTokens": 100,
+        "outputTokens": 200,
+        "cacheCreationTokens": 30,
+        "cacheReadTokens": 40,
+        "totalCost": 1.5,
+        "modelBreakdowns": [
+          { "modelName": "claude-opus-4-7", "inputTokens": 60, "outputTokens": 120,
+            "cacheCreationTokens": 20, "cacheReadTokens": 25, "cost": 1.0 },
+          { "modelName": "claude-sonnet-4-6", "inputTokens": 40, "outputTokens": 80,
+            "cacheCreationTokens": 10, "cacheReadTokens": 15, "cost": 0.5 }
+        ]
+      }
+    ],
+    "-Users-me-squad-worktrees-x_abc": [
+      {
+        "date": "2026-05-14",
+        "inputTokens": 5,
+        "outputTokens": 6,
+        "cacheCreationTokens": 1,
+        "cacheReadTokens": 2,
+        "totalCost": 0.1,
+        "modelBreakdowns": [
+          { "modelName": "claude-haiku-4-5-20251001", "inputTokens": 5, "outputTokens": 6,
+            "cacheCreationTokens": 1, "cacheReadTokens": 2, "cost": 0.1 }
+        ]
+      }
+    ]
+  },
+  "totals": {}
+}

@@ -1,0 +1,16 @@
+{
+  "sessions": [
+    {
+      "sessionId": "-Users-me-dev-Iakuvo",
+      "lastActivity": "2026-05-15",
+      "totalCost": 1.5,
+      "modelBreakdowns": [
+        { "modelName": "claude-opus-4-7", "inputTokens": 60, "outputTokens": 120,
+          "cacheCreationTokens": 20, "cacheReadTokens": 25, "cost": 1.0 },
+        { "modelName": "claude-sonnet-4-6", "inputTokens": 40, "outputTokens": 80,
+          "cacheCreationTokens": 10, "cacheReadTokens": 15, "cost": 0.5 }
+      ]
+    }
+  ],
+  "totals": {}
+}
