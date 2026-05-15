@@ -1,9 +1,12 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 
+	"github.com/petertrost/claude-code-token-metrics/internal/analyze"
+	"github.com/petertrost/claude-code-token-metrics/internal/ccusage"
 	"github.com/petertrost/claude-code-token-metrics/internal/paths"
 	"github.com/petertrost/claude-code-token-metrics/internal/snapshot"
 )
@@ -18,6 +21,26 @@ Usage:
 
 func runSweep() error {
 	return snapshot.Sweep(paths.ClaudeProjectsDir(), paths.StoreProjectsDir())
+}
+
+func runAnalyze(args []string) error {
+	fs := flag.NewFlagSet("analyze", flag.ExitOnError)
+	outDir := fs.String("out", "out", "directory for the CSV/JSON output files")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	res, err := analyze.Run(analyze.Config{
+		StoreRoot:      paths.StoreRoot(),
+		SquadStatePath: paths.SquadStateFile(),
+		OutDir:         *outDir,
+		CCUsage:        ccusage.DefaultRunner(),
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("analyze: wrote %d session rows and %d daily rows to %s/\n",
+		len(res.Sessions), len(res.Daily), *outDir)
+	return nil
 }
 
 func main() {
@@ -35,7 +58,10 @@ func main() {
 		}
 		fmt.Println("sweep: snapshot store updated")
 	case "analyze":
-		fmt.Println("analyze: not yet implemented")
+		if err := runAnalyze(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "analyze:", err)
+			os.Exit(1)
+		}
 	case "-h", "--help", "help":
 		fmt.Print(usage)
 	default:
