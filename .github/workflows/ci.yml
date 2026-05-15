@@ -1,7 +1,12 @@
 name: ci
+# Automatic push/pull_request triggers are disabled to avoid consuming
+# GitHub Actions minutes. Run on demand from the Actions tab, or restore the
+# triggers below to re-enable CI:
+#   on:
+#     push:
+#     pull_request:
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 jobs:
   test:
     runs-on: macos-latest
