@@ -14,6 +14,11 @@ type Config struct {
 	// precise resolution succeeds. It exists to recover historical sessions
 	// whose worktrees were deleted before the SessionStart hook existed.
 	SquadDefaultRepo string `json:"squad_default_repo"`
+
+	// ProjectAliases maps a resolved repo path to an explicit project name.
+	// It overrides git-remote derivation, so a path whose worktree is now
+	// deleted (no remote to read) can still get a clean project identity.
+	ProjectAliases map[string]string `json:"project_aliases"`
 }
 
 // LoadConfig reads the tool config. A missing file yields a zero-value Config

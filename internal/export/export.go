@@ -9,10 +9,12 @@ import (
 	"strconv"
 )
 
-// SessionRow is one row of sessions.{csv,json}: one (project-dir, repo, model)
-// triple. ccusage cannot break usage down per transcript UUID, so ProjectDir
-// (the ccusage project key) is the finest identifier available.
+// SessionRow is one row of sessions.{csv,json}: one (project, repo, model)
+// triple. Project is the primary identifier (a clean owner/repo name); Repo
+// is the underlying repo path, kept as secondary detail. ccusage cannot break
+// usage down per transcript UUID, so ProjectDir is the finest ccusage key.
 type SessionRow struct {
+	Project             string  `json:"project"`
 	Repo                string  `json:"repo"`
 	ProjectDir          string  `json:"project_dir"`
 	Model               string  `json:"model"`
@@ -23,9 +25,11 @@ type SessionRow struct {
 	Cost                float64 `json:"cost"`
 }
 
-// DailyRow is one row of daily.{csv,json}: one (date, repo, model) triple.
+// DailyRow is one row of daily.{csv,json}: one (date, project, repo, model)
+// tuple. Project is the primary identifier; Repo is secondary detail.
 type DailyRow struct {
 	Date                string  `json:"date"`
+	Project             string  `json:"project"`
 	Repo                string  `json:"repo"`
 	Model               string  `json:"model"`
 	InputTokens         int64   `json:"input_tokens"`
@@ -40,11 +44,11 @@ func WriteSessions(dir string, rows []SessionRow) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	header := []string{"repo", "project_dir", "model", "input_tokens",
+	header := []string{"project", "repo", "project_dir", "model", "input_tokens",
 		"output_tokens", "cache_creation_tokens", "cache_read_tokens", "cost"}
 	recs := make([][]string, len(rows))
 	for i, r := range rows {
-		recs[i] = []string{r.Repo, r.ProjectDir, r.Model,
+		recs[i] = []string{r.Project, r.Repo, r.ProjectDir, r.Model,
 			itoa(r.InputTokens), itoa(r.OutputTokens),
 			itoa(r.CacheCreationTokens), itoa(r.CacheReadTokens),
 			ftoa(r.Cost)}
@@ -60,11 +64,11 @@ func WriteDaily(dir string, rows []DailyRow) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	header := []string{"date", "repo", "model", "input_tokens",
+	header := []string{"date", "project", "repo", "model", "input_tokens",
 		"output_tokens", "cache_creation_tokens", "cache_read_tokens", "cost"}
 	recs := make([][]string, len(rows))
 	for i, r := range rows {
-		recs[i] = []string{r.Date, r.Repo, r.Model,
+		recs[i] = []string{r.Date, r.Project, r.Repo, r.Model,
 			itoa(r.InputTokens), itoa(r.OutputTokens),
 			itoa(r.CacheCreationTokens), itoa(r.CacheReadTokens),
 			ftoa(r.Cost)}

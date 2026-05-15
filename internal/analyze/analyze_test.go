@@ -197,3 +197,69 @@ func TestRunSumsProjectsResolvingToSameRepo(t *testing.T) {
 		t.Errorf("summed row = %+v; want input=20 output=40 cacheCreate=2 cacheRead=4 cost=1.0", row)
 	}
 }
+
+// Two DISTINCT repo directories that share one git remote (e.g. a dev clone
+// and a CI-runner checkout) must collapse into a single daily row, because
+// the project name — not the repo path — is the rollup key.
+func TestRunCollapsesReposBySharedProjectName(t *testing.T) {
+	store := t.TempDir()
+	projects := filepath.Join(store, "projects")
+
+	// Two separate git repos, same remote URL -> same project "acme/widget".
+	repoA := t.TempDir()
+	repoB := t.TempDir()
+	for _, r := range []string{repoA, repoB} {
+		runGit(t, r, "init")
+		runGit(t, r, "config", "user.email", "t@t.t")
+		runGit(t, r, "config", "user.name", "t")
+		runGit(t, r, "remote", "add", "origin", "https://github.com/acme/widget.git")
+	}
+
+	// project-dir -proj-a -> repoA, -proj-b -> repoB.
+	for name, r := range map[string]string{"-proj-a": repoA, "-proj-b": repoB} {
+		pd := filepath.Join(projects, name)
+		if err := os.MkdirAll(pd, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeLine(t, filepath.Join(pd, "s.jsonl"),
+			`{"type":"assistant","cwd":"`+r+`"}`)
+	}
+
+	day := []ccusage.DailyRow{{
+		Date: "2026-05-15",
+		ModelBreakdowns: []ccusage.ModelBreakdown{
+			{ModelName: "claude-opus-4-7", InputTokens: 10, OutputTokens: 20, Cost: 0.5},
+		},
+	}}
+	fake := fakeCCUsage{
+		daily: &ccusage.DailyReport{Projects: map[string][]ccusage.DailyRow{
+			"-proj-a": day,
+			"-proj-b": day,
+		}},
+		session: &ccusage.SessionReport{},
+	}
+
+	res, err := Run(Config{
+		StoreRoot:      store,
+		SquadStatePath: filepath.Join(t.TempDir(), "none.json"),
+		OutDir:         t.TempDir(),
+		CCUsage:        fake,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if len(res.Daily) != 1 {
+		t.Fatalf("daily rows = %d, want 1 (two repos, one project, must collapse)", len(res.Daily))
+	}
+	if res.Daily[0].Project != "acme/widget" {
+		t.Errorf("project = %q, want acme/widget", res.Daily[0].Project)
+	}
+	if res.Daily[0].InputTokens != 20 || res.Daily[0].Cost != 1.0 {
+		t.Errorf("collapsed row = %+v; want input=20 cost=1.0", res.Daily[0])
+	}
+	// The project spans two repo paths, so Repo is left blank (ambiguous).
+	if res.Daily[0].Repo != "" {
+		t.Errorf("Repo = %q, want empty when project spans multiple repo paths", res.Daily[0].Repo)
+	}
+}

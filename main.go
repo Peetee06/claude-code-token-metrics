@@ -10,6 +10,7 @@ import (
 	"github.com/petertrost/claude-code-token-metrics/internal/ccusage"
 	"github.com/petertrost/claude-code-token-metrics/internal/paths"
 	"github.com/petertrost/claude-code-token-metrics/internal/repo"
+	"github.com/petertrost/claude-code-token-metrics/internal/report"
 	"github.com/petertrost/claude-code-token-metrics/internal/setup"
 	"github.com/petertrost/claude-code-token-metrics/internal/snapshot"
 )
@@ -20,6 +21,7 @@ Usage:
   claude-code-token-metrics setup     Install the SessionStart/SessionEnd hooks and launchd sweep job
   claude-code-token-metrics sweep     Snapshot ~/.claude/projects into the local store
   claude-code-token-metrics analyze   Resolve repos, run ccusage, write CSV/JSON
+  claude-code-token-metrics report    Build a self-contained HTML chart from analyze output
 `
 
 func runSweep() error {
@@ -57,6 +59,20 @@ func runAnalyze(args []string) error {
 	}
 	fmt.Printf("analyze: wrote %d session rows and %d daily rows to %s/\n",
 		len(res.Sessions), len(res.Daily), *outDir)
+	return nil
+}
+
+func runReport(args []string) error {
+	fs := flag.NewFlagSet("report", flag.ExitOnError)
+	dir := fs.String("dir", "out", "directory holding analyze output (daily.json)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	outPath, err := report.WriteReport(*dir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("report: wrote %s\n", outPath)
 	return nil
 }
 
@@ -108,6 +124,11 @@ func main() {
 	case "analyze":
 		if err := runAnalyze(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "analyze:", err)
+			os.Exit(1)
+		}
+	case "report":
+		if err := runReport(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "report:", err)
 			os.Exit(1)
 		}
 	case "-h", "--help", "help":
